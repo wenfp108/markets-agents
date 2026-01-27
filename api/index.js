@@ -4,22 +4,16 @@ export default async function handler(req, res) {
   try {
     const { GITHUB_TOKEN, REPO_OWNER, REPO_NAME, CRON_SECRET } = process.env;
 
-    // 🔒 1. 安全门神：检查 URL 是否带正确密码
-    // 如果没有 ?key=你的密码，直接拒绝
+    // 🔒 验证密码
     if (req.query.key !== CRON_SECRET) {
-      return res.status(401).json({ error: '⛔ 闲人免进 (Unauthorized)' });
+      return res.status(401).json({ error: '⛔ Unauthorized' });
     }
 
-    // 🌟 2. 核心指令集 (无视日期，只看意图)
+    // 🌟 核心指令集
     const templates = [
-      { core: "What will Gold (GC) hit", type: "monthly" },
-      { core: "What will Gold (GC) settle", type: "monthly" },
-      { core: "Fed decision", type: "monthly" },
-      { core: "Fed rate cuts", type: "yearly" }, // 自动适配 2026/2027
-      { core: "What price will Bitcoin hit", type: "monthly" },
-      { core: "Bitcoin price on", type: "daily" }, // 自动适配 T+2
-      { core: "Bitcoin above", type: "daily" },    // 自动适配 T+2
-      { core: "Bitcoin all time high", type: "ath" }
+      { core: "Gold", type: "monthly" }, // 简化关键词，扩大搜索范围
+      { core: "Fed", type: "monthly" },
+      { core: "Bitcoin", type: "daily" }
     ];
 
     const headers = { 
@@ -27,44 +21,25 @@ export default async function handler(req, res) {
       'Referer': 'https://polymarket.com/'
     };
 
-    // === 📅 3. 动态时间工厂 ===
     const now = new Date();
+    
+    // === 📅 1. 简易时间窗口 ===
     const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     
-    // A. 月度窗口 (15号轮动)
+    // 现在的月份 + 下个月
     const currentMonthIdx = now.getMonth();
-    let targetMonths = [months[currentMonthIdx], shortMonths[currentMonthIdx]];
-    if (now.getDate() >= 15) {
-      const nextIdx = (currentMonthIdx + 1) % 12;
-      targetMonths.push(months[nextIdx], shortMonths[nextIdx]);
-    }
-
-    // B. 年度窗口 (今年 + 明年)
-    const currentYear = now.getFullYear();
-    const targetYears = [String(currentYear), String(currentYear + 1)]; 
-
-    // C. 日度窗口 (T+2 黄金三天: 今天, 明天, 后天)
-    const getFmtDate = (d) => [`${shortMonths[d.getMonth()]} ${d.getDate()}`, `${months[d.getMonth()]} ${d.getDate()}`];
-    
-    const day0 = getFmtDate(now);
-    const day1 = getFmtDate(new Date(now.getTime() + 86400000));
-    const day2 = getFmtDate(new Date(now.getTime() + 86400000 * 2));
-    
-    const targetDays = [...day0, ...day1, ...day2]; 
-
-    // ===========================================
+    const nextMonthIdx = (currentMonthIdx + 1) % 12;
+    const targetMonths = [
+        months[currentMonthIdx], shortMonths[currentMonthIdx], 
+        months[nextMonthIdx], shortMonths[nextMonthIdx]
+    ];
 
     let scoutedSlugs = new Set();
 
-    // 🚀 第一阶段：模版扫描 (Scouting)
+    // 🚀 第一阶段：广撒网 (Scouting)
     for (const t of templates) {
-      let searchKey = "";
-      if (t.core.includes("Gold")) searchKey = "Gold (GC)";
-      else if (t.core.includes("Fed")) searchKey = "Fed";
-      else searchKey = "Bitcoin";
-
-      const url = `https://gamma-api.polymarket.com/markets?q=${encodeURIComponent(searchKey)}&active=true&closed=false&limit=50`;
+      const url = `https://gamma-api.polymarket.com/markets?q=${encodeURIComponent(t.core)}&active=true&closed=false&limit=50`;
       const resp = await axios.get(url, { headers });
       const items = resp.data || [];
 
@@ -73,33 +48,14 @@ export default async function handler(req, res) {
         const vol = Number(item.volume || 0);
         const slug = item.eventSlug || item.slug;
 
-        // 🛡️ 成交量门槛 $1000
-        if (vol < 1000 || !title || !slug) return;
+        // 🛡️ 临时调整：成交量 > $0 就抓 (确保你能看到数据)
+        if (vol <= 0 || !title || !slug) return;
 
-        let isMatch = false;
-        
-        // 核心词校验
-        if (!title.toLowerCase().includes(searchKey.split(" ")[0].toLowerCase())) return;
-
-        if (t.type === "monthly") {
-          let action = t.core.split(" ").pop().toLowerCase();
-          if (t.core.includes("Fed decision")) action = "decision";
-          if (targetMonths.some(m => title.includes(m)) && title.toLowerCase().includes(action)) isMatch = true;
-        } 
-        else if (t.type === "daily") {
-          let action = "";
-          if (t.core.includes("price on")) action = "price";
-          else if (t.core.includes("above")) action = "above";
-          if (targetDays.some(d => title.includes(d)) && title.toLowerCase().includes(action)) isMatch = true;
+        // 简单匹配：标题里包含月份即可
+        // 比如搜 Gold，只要标题里有 Jan 或 Feb 就抓
+        if (targetMonths.some(m => title.includes(m))) {
+             scoutedSlugs.add(slug);
         }
-        else if (t.type === "yearly") {
-          if (targetYears.some(y => title.includes(y)) && title.toLowerCase().includes("rate cut")) isMatch = true;
-        }
-        else if (t.type === "ath") {
-          if (title.toLowerCase().includes("all time high")) isMatch = true;
-        }
-
-        if (isMatch) scoutedSlugs.add(slug);
       });
     }
 
@@ -115,30 +71,43 @@ export default async function handler(req, res) {
         if (!m.outcomePrices) return;
         const prices = JSON.parse(m.outcomePrices);
         const outcomes = JSON.parse(m.outcomes) || ["Yes", "No"];
-        let signals = prices.map((p, i) => `${outcomes[i]}: ${(Number(p)*100).toFixed(1)}%`);
+        let signals = prices.map((p, i) => `${outcomes[i]}: ${(Number(p)*100).toFixed(0)}%`);
         
         const date = m.endDate ? m.endDate.split("T")[0] : "LongTerm";
         if (!analysis[date]) analysis[date] = [];
-        analysis[date].push({ choice: m.groupItemTitle || m.question, signal: signals.join(" | "), vol: `$${Math.round(m.volume)}` });
+        // 数据格式化
+        analysis[date].push(`[${m.groupItemTitle || m.question}] ${signals.join(" | ")} (Vol: $${Math.round(m.volume)})`);
       });
 
       if (Object.keys(analysis).length > 0) {
-        finalReport.push({ title: event.title, total_vol: `$${Math.round(event.volume)}`, analysis });
+        finalReport.push({ 
+            title: event.title, 
+            total_vol: `$${Math.round(event.volume)}`, 
+            data: analysis 
+        });
       }
     }
 
-    // 🚀 第三阶段：GitHub 推送
-    const nowStr = now.toISOString().split('T')[0];
-    const path = `data/strategy/${nowStr}/Alpha_V8.4_${Date.now()}.json`;
+    // 🚀 第三阶段：按你的要求生成文件名
+    // 格式：Finance_2026-01-28_14-30-05.json
+    const isoString = now.toISOString();
+    const datePart = isoString.split('T')[0];
+    const timePart = isoString.split('T')[1].split('.')[0].replace(/:/g, '-');
     
+    const fileName = `Finance_${datePart}_${timePart}.json`;
+    const path = `data/strategy/${datePart}/${fileName}`;
+    
+    // 如果没有数据，依然写入一个提示信息，证明系统跑通了
+    const contentData = finalReport.length > 0 ? finalReport : [{ info: "System running, no matching markets found yet." }];
+
     await axios.put(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`, {
-      message: "The Architect's Alpha: Auto-Window Secure Update",
-      content: Buffer.from(JSON.stringify(finalReport, null, 2)).toString('base64')
+      message: `UCIP Log: ${fileName}`,
+      content: Buffer.from(JSON.stringify(contentData, null, 2)).toString('base64')
     }, { headers: { Authorization: `Bearer ${GITHUB_TOKEN}` } });
 
-    res.status(200).send(`✅ V8.4 安全扫描完成。捕获 ${finalReport.length} 条数据。`);
+    res.status(200).send(`✅ 成功！文件已生成: ${fileName} (捕获 ${finalReport.length} 条)`);
   } catch (err) {
     console.error(err);
-    res.status(500).send(`❌ 错误: ${err.message}`);
+    res.status(500).send(`❌ Error: ${err.message}`);
   }
 }
