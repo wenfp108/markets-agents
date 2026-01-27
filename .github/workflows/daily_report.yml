@@ -26,7 +26,6 @@ jobs:
           cat <<'EOF' > analyzer.py
           import os
           import json
-          from datetime import datetime
           
           # === 1. 智能查找最新数据 ===
           data_root = "data"
@@ -40,94 +39,102 @@ jobs:
           latest_date = all_dirs[-1] 
           source_dir = os.path.join(data_root, latest_date)
           
-          # === 2. 输出目录 ===
           report_dir = "reports"
           if not os.path.exists(report_dir): os.makedirs(report_dir)
           print(f"🎯 分析源: {source_dir}")
 
-          # === 3. 辅助函数 ===
-          def get_top_candidate(market_data):
+          # === 2. 辅助函数：找活跃的主力盘口 ===
+          def get_active_market(market_data):
+              if 'markets' not in market_data or not market_data['markets']:
+                  return None
+              
+              # ★★★ 核心修复：优先找还没结束(closed=False)的盘口 ★★★
+              valid_markets = market_data['markets']
+              
+              # 1. 尝试过滤掉所有 closed: true 的盘口
+              active_markets = [m for m in valid_markets if not m.get('closed', False)]
+              
+              # 2. 如果有活着的，就用活着的；如果全死光了，就只能用第一个
+              target_list = active_markets if active_markets else valid_markets
+              
+              # 3. 在活着的盘口里，找成交量(volume)最大的那个（通常是主战场）
+              # 这样做能避免抓到冷门的子选项
               try:
-                  if 'markets' not in market_data or len(market_data['markets']) == 0: return None
-                  m = market_data['markets'][0]
-                  outcomes = m.get('outcomes')
+                  # 有些 volume 是字符串，有些是数字，做个防呆处理
+                  target_list.sort(key=lambda x: float(str(x.get('volume', 0))), reverse=True)
+                  return target_list[0]
+              except:
+                  return target_list[0]
+
+          # === 3. 辅助函数：解析赢家 ===
+          def get_top_candidate(market_item):
+              if not market_item: return None
+              try:
+                  outcomes = market_item.get('outcomes')
                   if isinstance(outcomes, str): outcomes = json.loads(outcomes)
-                  prices = m.get('outcomePrices')
+                  prices = market_item.get('outcomePrices')
                   if isinstance(prices, str): prices = json.loads(prices)
+                  
                   if not outcomes or not prices: return None
+                  
                   candidates = []
                   for i in range(len(outcomes)):
-                      try: candidates.append((str(outcomes[i]), float(prices[i])))
-                      except: continue
+                      p = float(prices[i])
+                      name = str(outcomes[i])
+                      candidates.append((name, p))
+                  
                   candidates.sort(key=lambda x: x[1], reverse=True)
                   return candidates[0]
               except: return None
 
-          # ★★★ 核心升级：智能去重时间轴生成器 ★★★
+          # === 4. 辅助函数：智能时间轴 ===
           def generate_smart_timeline(history_list):
-              # 1. 先按时间排序
               history_list.sort(key=lambda x: x[0])
               if not history_list: return "无数据", []
               
-              key_frames = []      # 存关键帧数据
-              last_state_str = ""  # 用来对比上一次的状态
-              last_winner = ""     # 用来检测反转
+              key_frames = []
+              last_state_str = ""
+              last_winner = ""
 
               for ts, content in history_list:
                   data = content.get('data', {})
-                  top = get_top_candidate(data)
+                  
+                  # 使用新的逻辑：找活跃盘口
+                  active_m = get_active_market(data)
+                  top = get_top_candidate(active_m)
                   
                   if top:
                       name, prob = top
-                      # 状态指纹：名字 + 整数胜率 (例如 "Trump|55")
-                      # 只有这个指纹变了，我们才认为行情动了
+                      # 状态指纹
                       current_state_str = f"{name}|{int(prob*100)}"
                       
                       if current_state_str != last_state_str:
-                          # --- 提取时间 (HH:MM) ---
                           try: time_label = ts.split('T')[1][:5]
                           except: time_label = ""
                           
-                          # --- 记录关键帧 ---
                           key_frames.append({
                               "time": time_label,
                               "name": name,
                               "prob": prob,
-                              "is_flip": (last_winner != "" and name != last_winner) # 是否发生反转
+                              "is_flip": (last_winner != "" and name != last_winner)
                           })
-                          
-                          # 更新状态
                           last_state_str = current_state_str
                           last_winner = name
               
-              # --- 如果关键帧太多(超过5个)，为了表格美观，只取头尾和中间的转折点 ---
-              # (但你现在的需求是想看全过程，所以我们先保留精华)
-              # 优化：如果连续变化极小，可以不显示。但目前逻辑是胜率变1%就显示。
-              
-              # 生成 Markdown 字符串
+              # 生成 Markdown
               md_parts = []
               for kf in key_frames:
-                  # 显示格式: 10:00 Trump(55%)
-                  # 如果时间是空的，就不显示时间
                   t_prefix = f"*{kf['time']}* " if kf['time'] else ""
-                  
-                  # 格式化概率
                   prob_fmt = f"{kf['prob']*100:.0f}%"
-                  
-                  # 构造显示文本
                   item_str = f"{t_prefix}{kf['name']}({prob_fmt})"
                   
-                  if kf['is_flip']:
-                      md_parts.append(f"🔀 `{item_str}`") # 反转高亮
-                  else:
-                      md_parts.append(f"`{item_str}`")
+                  if kf['is_flip']: md_parts.append(f"🔀 `{item_str}`")
+                  else: md_parts.append(f"`{item_str}`")
               
-              # 用箭头连接
               timeline_md = " → ".join(md_parts)
-              
               return timeline_md, key_frames
 
-          # === 4. 聚合数据 ===
+          # === 5. 主循环 ===
           event_map = {}
           for filename in os.listdir(source_dir):
               if filename.endswith(".json"):
@@ -149,56 +156,55 @@ jobs:
                               event_map[eid]['latest_data'] = content
                   except: pass
 
-          # === 5. 生成分析结果 ===
+          # === 6. 生成报告 ===
           report_list = []
-
           for eid, info in event_map.items():
               raw_data = info['latest_data']
               data = raw_data.get('data', {})
               meta = raw_data.get('meta', {})
               
-              top = get_top_candidate(data)
+              # ★ 这里也要用新逻辑
+              active_m = get_active_market(data)
+              top = get_top_candidate(active_m)
               consensus = f"👑 {top[0]} ({top[1]*100:.1f}%)" if top else "N/A"
               
-              # ★ 调用新的智能去重函数
               t_str, t_data = generate_smart_timeline(info['history'])
+              
+              # 获取具体的子标题 (比如 "Dec 2026") 让显示更清楚
+              sub_title = ""
+              if active_m and 'groupItemTitle' in active_m:
+                  sub_title = f" [{active_m['groupItemTitle']}]"
 
               report_item = {
                   "id": eid,
-                  "title": meta.get('title', data.get('title', eid)),
+                  "title": (meta.get('title', data.get('title', eid)) + sub_title), # 标题加上具体日期
                   "sector": meta.get('sector_tag', 'General'),
                   "heat_count": info['count'],
                   "volume": float(data.get('volume', 0)),
                   "consensus": consensus,
-                  "timeline_md": t_str,   # 智能去重后的 MD 字符串
-                  "timeline_data": t_data, # 结构化数据
+                  "timeline_md": t_str,
+                  "timeline_data": t_data,
                   "url": f"https://polymarket.com/event/{eid}"
               }
               report_list.append(report_item)
 
           report_list.sort(key=lambda x: (x['heat_count'], x['volume']), reverse=True)
 
-          # === 6. 输出 MD ===
           md = f"# 📊 24H 智能复盘 ({latest_date})\n\n"
-          md += f"**生成时间**: 23:55 | **去重逻辑**: 仅记录胜率(1%)变化的关键时刻\n\n"
-          md += "| 热度 | 板块 | 事件标题 | 🔥 最终赢家 | 🌊 资金博弈关键帧 (Time/Name/Prob) |\n"
-          md += "| :--- | :--- | :--- | :--- | :--- |\n"
-
+          md += f"**生成时间**: 23:55 | **去重逻辑**: 优先展示活跃(Active)盘口\n\n"
+          md += "| 热度 | 板块 | 事件标题 | 🔥 最终赢家 | 🌊 资金博弈关键帧 |\n| :--- | :--- | :--- | :--- | :--- |\n"
           for item in report_list:
               icon = "🔥🔥🔥" if item['heat_count']>=20 else "🔥" if item['heat_count']>=10 else "⭐️"
-              # 截断太长的标题
-              title = item['title'][:40] + "..." if len(item['title']) > 40 else item['title']
-              
+              title = item['title'][:50] + "..." if len(item['title']) > 50 else item['title']
               md += f"| {icon} | {item['sector']} | [{title}]({item['url']}) | {item['consensus']} | {item['timeline_md']} |\n"
 
           with open(f"{report_dir}/DAILY_HEATMAP_{latest_date}.md", "w") as f:
               f.write(md)
 
-          # === 7. 输出 JSON ===
           with open(f"{report_dir}/DAILY_SUMMARY_{latest_date}.json", "w") as f:
               json.dump(report_list, f, indent=2)
 
-          print(f"✅ V11 完成！")
+          print(f"✅ V12 完成！")
           EOF
 
           python analyzer.py
@@ -208,5 +214,5 @@ jobs:
           git config --global user.name "Report Bot"
           git config --global user.email "bot@github.com"
           git add reports/
-          git commit -m "📊 V11 Smart Timeline Report" || exit 0
+          git commit -m "📊 V12 Filter Closed Markets" || exit 0
           git push
