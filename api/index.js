@@ -83,7 +83,8 @@ export default async function handler(req, res) {
     const datePart = isoString.split('T')[0];
     const timePart = isoString.split('T')[1].split('.')[0].replace(/:/g, '-');
     
-    const fileName = `RawData_${datePart}_${timePart}.json`;
+    // 改名：Finance_RAW_年-月-日_时-分-秒
+    const fileName = `Finance_RAW_${datePart}_${timePart}.json`;
     const path = `data/strategy/${datePart}/${fileName}`;
     
     // 如果还是空的，把调试信息写进去，方便看看是哪里出了问题
