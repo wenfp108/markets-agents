@@ -2,10 +2,26 @@ const puppeteer = require('puppeteer');
 const axios = require('axios');
 const http = require('http');
 
-// === 🛠️ 1. 从 GitHub Issues 获取配置 (你的新前端) ===
+// ==========================================
+// ✨ [新增] 1. 智能目录分类器 (对齐二号机逻辑)
+// ==========================================
+function getCategory(title) {
+    const t = title.toLowerCase();
+    if (t.includes('fed') || t.includes('rate') || t.includes('cpi') || t.includes('inflation')) return 'ECONOMY';
+    if (t.includes('gold') || t.includes('silver') || t.includes('s&p') || t.includes('market') || t.includes('stock')) return 'FINANCE';
+    if (t.includes('bitcoin') || t.includes('eth') || t.includes('crypto') || t.includes('btc')) return 'CRYPTO';
+    if (t.includes('election') || t.includes('president') || t.includes('senate') || t.includes('cabinet')) return 'POLITICS';
+    if (t.includes('war') || t.includes('strike') || t.includes('border') || t.includes('conflict')) return 'GEOPOLITICS';
+    if (t.includes('ai') || t.includes('gpt') || t.includes('nvidia') || t.includes('spacex')) return 'TECH';
+    if (t.includes('disaster') || t.includes('climate') || t.includes('virus')) return 'SCIENCE';
+    return 'WORLD'; // 保底分类
+}
+
+// ==========================================
+// 2. 从 GitHub Issues 获取配置
+// ==========================================
 async function fetchQuestionsFromIssues() {
     const { GITHUB_TOKEN, REPO_OWNER, REPO_NAME } = process.env;
-    // 获取该仓库所有状态为 "open" 的 issues
     const issuesUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?state=open&per_page=100`;
 
     try {
@@ -16,8 +32,6 @@ async function fetchQuestionsFromIssues() {
                 Accept: 'application/vnd.github.v3+json' 
             }
         });
-        
-        // 提取所有 Issue 的标题
         const questions = resp.data.map(issue => issue.title);
         console.log(`✅ Loaded ${questions.length} active questions from Issues.`);
         return questions;
@@ -27,15 +41,16 @@ async function fetchQuestionsFromIssues() {
     }
 }
 
-// === 📅 2. 智能问题生成器 (支持 {month} 占位符) ===
+// ==========================================
+// 3. 智能问题生成器 (支持 {month} 占位符)
+// ==========================================
 async function generateQueries() {
-    // 1. 从 Issue 获取原始标题
     const rawTemplates = await fetchQuestionsFromIssues();
     
-    // 如果没有 Issue，为了防止报错，我们给几个默认的保底问题
+    // 如果没有 Issue，使用保底默认值
     if (rawTemplates.length === 0) {
         console.log("⚠️ No active Issues found. Using default fallback.");
-        return [`What will Gold (GC) settle at in {month}?`]; 
+        return [{ query: `What will Gold (GC) settle at in {month}?`, originalTitle: `What will Gold (GC) settle at in {month}?` }]; 
     }
 
     const now = new Date();
@@ -45,39 +60,48 @@ async function generateQueries() {
     const currYear = String(now.getFullYear());
     const currDateStr = `${currMonth} ${now.getDate()}`; 
 
+    // ✨ [修改] 改为存储对象 { query, originalTitle }
     let finalQueries = [];
 
     rawTemplates.forEach(template => {
-        // 如果标题里包含动态占位符，进行替换
+        let queriesToAdd = [];
+        
         if (template.includes("{month}") || template.includes("{year}") || template.includes("{date}")) {
-            // 生成“当月”版本
             let q1 = template.replace(/{month}/g, currMonth)
                              .replace(/{next_month}/g, nextMonth)
                              .replace(/{year}/g, currYear)
                              .replace(/{date}/g, currDateStr);
-            finalQueries.push(q1);
+            queriesToAdd.push(q1);
 
-            // 如果包含 {month}，通常顺便查一下“下个月”，防止遗漏
             if (template.includes("{month}")) {
                 let q2 = template.replace(/{month}/g, nextMonth)
                                  .replace(/{next_month}/g, months[(now.getMonth() + 2) % 12])
                                  .replace(/{year}/g, currYear)
                                  .replace(/{date}/g, currDateStr);
-                finalQueries.push(q2);
+                queriesToAdd.push(q2);
             }
         } else {
-            // 固定问题
-            finalQueries.push(template);
+            queriesToAdd.push(template);
         }
+
+        // 将生成的查询词与原始 Issue 标题绑定
+        queriesToAdd.forEach(q => {
+            finalQueries.push({
+                query: q,
+                originalTitle: template // 保留“核心话题”，用于后续 AI 关联
+            });
+        });
     });
 
-    return [...new Set(finalQueries)]; // 去重
+    return finalQueries;
 }
 
-// === 🔍 3. 模拟搜索 (已修复 "live" bug) ===
+// ==========================================
+// 4. 模拟搜索 (Puppeteer)
+// ==========================================
 async function getSlugs() {
-    const queries = await generateQueries();
-    const slugs = new Set();
+    const queryObjects = await generateQueries();
+    const results = []; // ✨ [修改] 存储结构化结果 { slug, originalTitle }
     
     const browser = await puppeteer.launch({
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
@@ -87,53 +111,61 @@ async function getSlugs() {
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    for (const q of queries) {
+    for (const obj of queryObjects) {
         try {
-            console.log(`[SCOUTING] ${q}`);
-            await page.goto(`https://polymarket.com/search?q=${encodeURIComponent(q)}`, { waitUntil: 'networkidle2', timeout: 25000 });
+            console.log(`[SCOUTING] ${obj.query}`);
+            await page.goto(`https://polymarket.com/search?q=${encodeURIComponent(obj.query)}`, { waitUntil: 'networkidle2', timeout: 25000 });
             
-            // 🔥 核心修复逻辑在此 🔥
             const slug = await page.evaluate(() => {
-                // 1. 找到所有看起来像事件链接的 a 标签
                 const links = Array.from(document.querySelectorAll('a[href^="/event/"]'));
-                
-                // 2. 遍历链接，找到第一个不是 "live" 也不是 "news" 的真正 slug
                 for (const link of links) {
                     const href = link.getAttribute('href');
                     const parts = href.split('/');
-                    const potentialSlug = parts.pop() || parts.pop(); // 防止末尾斜杠
-                    
-                    // 黑名单过滤：排除干扰项
+                    const potentialSlug = parts.pop() || parts.pop();
+                    // 黑名单过滤
                     if (potentialSlug !== 'live' && potentialSlug !== 'news' && potentialSlug !== 'activity') {
-                        return potentialSlug; // 找到正主，立即返回
+                        return potentialSlug;
                     }
                 }
                 return null;
             });
 
             if (slug) {
-                slugs.add(slug);
-                console.log(`[MATCH] ✅ Found Real Slug: ${slug}`);
+                // ✨ [关键] 只要找到 slug，就把原始话题带上
+                results.push({ slug: slug, originalTitle: obj.originalTitle });
+                console.log(`[MATCH] ✅ Found: ${slug}`);
             } else {
-                console.log(`[FAIL] ❌ No valid slug found for: ${q}`);
+                console.log(`[FAIL] ❌ No valid slug found for: ${obj.query}`);
             }
-        } catch (e) { console.log(`[SKIP] ${q}`); }
+        } catch (e) { console.log(`[SKIP] ${obj.query}`); }
     }
     await browser.close();
-    return Array.from(slugs);
+    
+    // 简单去重 (以 slug 为准)
+    const uniqueResults = [];
+    const seenSlugs = new Set();
+    for (const r of results) {
+        if (!seenSlugs.has(r.slug)) {
+            seenSlugs.add(r.slug);
+            uniqueResults.push(r);
+        }
+    }
+    return uniqueResults;
 }
 
-// === 🚀 4. 数据同步 (逻辑不变) ===
+// ==========================================
+// 5. 数据同步 (🔥核心修改区域🔥)
+// ==========================================
 async function syncData() {
     const { GITHUB_TOKEN, REPO_OWNER, REPO_NAME } = process.env;
     if (!GITHUB_TOKEN) return console.log("❌ Missing Secrets!");
 
-    const slugs = await getSlugs();
+    const taskResults = await getSlugs();
     let processedData = [];
 
-    for (const slug of slugs) {
+    for (const task of taskResults) {
         try {
-            const resp = await axios.get(`https://gamma-api.polymarket.com/events?slug=${slug}`);
+            const resp = await axios.get(`https://gamma-api.polymarket.com/events?slug=${task.slug}`);
             const event = resp.data[0];
             if (!event || !event.markets) continue;
 
@@ -142,7 +174,7 @@ async function syncData() {
                 
                 const totalVol = Number(m.volume || 0);
                 const liq = Number(m.liquidity || 0);
-                // 门槛稍微放低一点，防止新 Issue 刚提出来没量被过滤
+                // 门槛保持: Volume < 10 或 Liquidity < 10 则忽略
                 if (totalVol < 10 && liq < 10) return; 
 
                 let prices = [], outcomes = [];
@@ -153,23 +185,39 @@ async function syncData() {
 
                 let priceStr = outcomes.map((o, i) => `${o}: ${(Number(prices[i]) * 100).toFixed(1)}%`).join(" | ");
 
+                // ✨ [重点] 这里完全复制了二号机的结构，并补全了 Category
                 processedData.push({
-                    slug: slug,
-                    ticker: m.slug,
+                    // 1. 基础 ID
+                    slug: task.slug,                // 对应一号机抓取的 slug
+                    ticker: m.slug,                 // 对应 m.slug
+                    
+                    // 2. 标题
                     question: m.groupItemTitle || m.question,
                     eventTitle: event.title,
+                    
+                    // 3. 价格与量
                     prices: priceStr,
                     volume: Math.round(totalVol),
                     liquidity: Math.round(liq),
+                    
+                    // 4. 时间与变动 (🔥 严格对齐二号机修正逻辑)
                     endDate: m.endDate ? m.endDate.split("T")[0] : "N/A",
-                    dayChange: m.oneDayPriceChange ? (m.oneDayPriceChange * 100).toFixed(2) + "%" : "0.00%",
+                    dayChange: m.oneDayPriceChange ? (Number(m.oneDayPriceChange) * 100).toFixed(2) + "%" : "0.00%",
                     vol24h: Math.round(Number(m.volume24hr || 0)),
-                    spread: m.spread ? (m.spread * 100).toFixed(2) + "%" : "N/A",
+                    spread: m.spread ? (Number(m.spread) * 100).toFixed(2) + "%" : "N/A",
+                    
+                    // 5. 排序与更新
                     sortOrder: Number(m.groupItemThreshold || 0),
-                    updatedAt: m.updatedAt
+                    updatedAt: m.updatedAt,
+
+                    // 6. 汇总看板关键字段 (一号机专属身份卡)
+                    engine: "sniper",                          // 标记来源
+                    core_topic: task.originalTitle,           // 关联 Issue 标题
+                    category: getCategory(task.originalTitle), // 自动生成的目录
+                    url: `https://polymarket.com/event/${task.slug}` // 方便点击
                 });
             });
-        } catch (e) { console.error(`Fetch Err: ${slug}`); }
+        } catch (e) { console.error(`Fetch Err: ${task.slug}`); }
     }
 
     if (processedData.length === 0) return console.log("No valid data found.");
@@ -178,26 +226,21 @@ async function syncData() {
     processedData.sort((a, b) => b.volume - a.volume);
 
     const now = new Date();
-    
-    // 1. 获取时间组件
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const day = now.getDate();
     const timePart = `${now.getHours().toString().padStart(2, '0')}_${now.getMinutes().toString().padStart(2, '0')}`;
 
-    // 2. 修改文件名格式: sniper-2026-1-28-15_30.json
     const fileName = `sniper-${year}-${month}-${day}-${timePart}.json`;
-
-    // 3. 保持文件夹路径不变: data/strategy/2026-01-28/...
     const datePart = now.toISOString().split('T')[0];
     const path = `data/strategy/${datePart}/${fileName}`;
 
     await axios.put(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`, {
-        message: `Sync from Issues: ${fileName}`,
+        message: `Structured Sync: ${fileName}`,
         content: Buffer.from(JSON.stringify(processedData, null, 2)).toString('base64')
     }, { headers: { Authorization: `Bearer ${GITHUB_TOKEN}` } });
     
-    console.log(`✅ Success: Archived ${processedData.length} items from GitHub Issues.`);
+    console.log(`✅ Success: Archived ${processedData.length} structured items.`);
 }
 
 http.createServer(async (req, res) => {
@@ -206,6 +249,6 @@ http.createServer(async (req, res) => {
         syncData().then(() => console.log("Sync Complete")).catch(e => console.error(e));
         res.end("Run Started");
     } else {
-        res.end("Monitor Agent Online");
+        res.end("Sniper Agent Online");
     }
 }).listen(7860);
