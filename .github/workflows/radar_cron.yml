@@ -1,0 +1,18 @@
+name: 📡 Radar Hourly Scan (Offset 20m)
+
+on:
+  schedule:
+    # 核心修改：每小时的第 20 分钟触发 (错峰运行)
+    - cron: '20 * * * *'
+  # 保留手动触发按钮
+  workflow_dispatch:
+
+jobs:
+  trigger_radar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake up Radar Bot
+        run: |
+          echo "📡 Triggering Poly-Radar Space..."
+          # 这里只唤醒二号机
+          curl -s -L -X GET "https://wenfp108-poly-radar.hf.space/run"
