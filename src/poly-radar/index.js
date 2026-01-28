@@ -2,6 +2,35 @@ const axios = require('axios');
 const http = require('http');
 
 // ==========================================
+// ✨ [新增] 0. 大师思维模型库 (Strategy Engine)
+// ==========================================
+const MASTERS = {
+    // [塔勒布] 尾部风险: 赔率极低(<5%)或极高(>95%)，但流动性充足(>5000)
+    TALEB: (m, prices) => {
+        const isTail = prices.some(p => Number(p) < 0.05 || Number(p) > 0.95);
+        return (isTail && Number(m.liquidity) > 5000) ? 'TAIL_RISK' : null;
+    },
+    // [索罗斯] 反身性: 24小时成交量巨大(>10000)且价格剧烈波动(>5%)
+    SOROS: (m) => {
+        const change = Math.abs(Number(m.oneDayPriceChange || 0));
+        const vol24 = Number(m.volume24hr || 0);
+        return (vol24 > 10000 && change > 0.05) ? 'REFLEXIVITY_TREND' : null;
+    },
+    // [芒格] 确定性: 极度收敛的市场，价差极小(<1%)，成交量巨大(>50000)
+    MUNGER: (m) => {
+        const spread = Number(m.spread || 1);
+        const vol = Number(m.volume || 0);
+        return (vol > 50000 && spread < 0.01) ? 'HIGH_CERTAINTY' : null;
+    },
+    // [纳瓦尔] 杠杆效应: 科技类话题且资金关注度高(>20000)
+    NAVAL: (m, category) => {
+        const vol = Number(m.volume || 0);
+        // 注意：这里需要传入大写的 TECH
+        return (category === 'TECH' && vol > 20000) ? 'TECH_LEVERAGE' : null;
+    }
+};
+
+// ==========================================
 // 1. 优先级排序 (板块归类逻辑)
 // ==========================================
 const CATEGORY_PRIORITY = [
@@ -141,6 +170,20 @@ async function runRadarTask() {
 
                 let priceStr = outcomes.map((o, i) => `${o}: ${(Number(prices[i]) * 100).toFixed(1)}%`).join(" | ");
 
+                // --- ✨ 大师策略打标开始 ---
+                const masterTags = [];
+                // 将 primaryTag 转大写以匹配 NAVAL 逻辑 (例如 tech -> TECH)
+                const categoryUpper = primaryTag.toUpperCase();
+                
+                // 运行 4 位大师的逻辑
+                for (const [name, logic] of Object.entries(MASTERS)) {
+                    const tag = logic(m, prices, categoryUpper);
+                    if (tag) masterTags.push(tag);
+                }
+                // 默认标签
+                if (masterTags.length === 0) masterTags.push("RAW_MARKET");
+                // --- ✨ 大师策略打标结束 ---
+
                 trendingData.push({
                     // 1. 基础 ID
                     slug: event.slug,       // 用 event.slug 对应一号机的 slug
@@ -156,18 +199,21 @@ async function runRadarTask() {
                     liquidity: Math.round(Number(m.liquidity || 0)),
                     
                     // 4. 时间与变动 (🔥修正：格式与一号机严格一致🔥)
-                    endDate: m.endDate ? m.endDate.split("T")[0] : "N/A", // 以前这里漏了 split
+                    endDate: m.endDate ? m.endDate.split("T")[0] : "N/A", 
                     dayChange: m.oneDayPriceChange ? (Number(m.oneDayPriceChange) * 100).toFixed(2) + "%" : "0.00%",
                     vol24h: Math.round(vol24h),
-                    spread: m.spread ? (Number(m.spread) * 100).toFixed(2) + "%" : "N/A", // 以前这里默认是 0.00%，改回 N/A
+                    spread: m.spread ? (Number(m.spread) * 100).toFixed(2) + "%" : "N/A", 
                     
                     // 5. 排序与更新
-                    sortOrder: Number(m.groupItemThreshold || 0), // 以前取的 sortOrder，改成 groupItemThreshold 以对齐
+                    sortOrder: Number(m.groupItemThreshold || 0), 
                     updatedAt: m.updatedAt,
                     
-                    // 6. 雷达特有字段 (不影响结构，AI 可选读)
-                    category: primaryTag.toUpperCase(),
-                    url: `https://polymarket.com/event/${event.slug}`
+                    // 6. 雷达特有字段
+                    category: categoryUpper,
+                    url: `https://polymarket.com/event/${event.slug}`,
+                    
+                    // ✨ 新增字段: 策略标签
+                    strategy_tags: masterTags 
                 });
             });
         });
