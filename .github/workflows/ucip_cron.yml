@@ -1,0 +1,27 @@
+name: Macro Scouter Trigger
+
+on:
+  schedule:
+    # 计划任务：每小时的第 15 分钟运行一次
+    # (选择 15 分是为了避开整点的高峰期，保证运行更稳定)
+    - cron: '15 * * * *'
+  
+  # 允许你在 GitHub Actions 界面手动点击 "Run workflow" 按钮触发
+  workflow_dispatch:
+
+jobs:
+  trigger_huggingface:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake up and Run Scouter
+        run: |
+          echo "🚀 Sending trigger signal to Hugging Face..."
+          
+          # 使用 curl 发送 GET 请求给你的 Hugging Face 堡垒
+          # URL 格式为: https://你的用户名-Space名.hf.space/run
+          # -s: 静默模式 (不输出进度条)
+          # -L: 跟随重定向 (关键！HF 的 Space 有时会发生跳转)
+          
+          curl -s -L -X GET "https://wenfp108-poly-data.hf.space/run"
+          
+          echo "✅ Signal sent! Check Hugging Face Logs for execution details."
