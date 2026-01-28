@@ -19,6 +19,30 @@
 
 
 ---
+---
+
+
+
+## 🛠️ 架构图
+
+
+
+```mermaid
+
+graph LR
+
+    A[GitHub Issues] -- 1. 读取指令 --> B(Hugging Face Space)
+
+    D[GitHub Actions] -- 2. 定时唤醒 --> B
+
+    B -- 3. 模拟搜索 & 抓取 --> E[Polymarket]
+
+    B -- 4. 清洗 & 存入 --> C[GitHub Data Folder]
+
+
+
+
+---
 
 ## 🛡️ 七大核心监控板块与筛选准则
 
