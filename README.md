@@ -19,16 +19,10 @@
 
 
 ---
----
-
-
 
 ## 🛠️ 架构图
 
-
-
 ```mermaid
-
 graph TD
     subgraph GitHub_Control [GitHub 指挥部]
         A1[GitHub Issues<br/>定向狙击指令]
@@ -68,7 +62,7 @@ graph TD
     %% 源码管理
     B1 & B2 -. "定期备份" .-> C3
 
-
+```
 
 ---
 
@@ -93,16 +87,16 @@ graph TD
 系统不仅仅是抓取，更是在“思考”数据的价值：
 
 1. **优先级去重 (Priority Sorting)**:
-如果一个事件同时拥有多个标签（如“地缘”和“政治”），系统会根据 `Politics > Economy > ... > World` 的优先级自动归类，确保 JSON 数据不重复，分类精准。
+如果一个事件同时拥有多个标签，系统会根据 `Politics > Economy > ... > World` 的优先级自动归类，确保 JSON 数据分类精准。
 2. **资金门槛 (Volume Gate)**:
 * **24h 成交额 > $10,000**: 只有产生真实博弈的市场才会被雷达捕获。
 * **自动剔除死盘**: 排除无成交量、点差 (Spread) 过大的无效盘口。
 
 
 3. **关键词清洗 (Keyword Cleaning)**:
-内置强大的 `Noise List`。例如，在政治板块，如果标题包含 "Tweet" 或 "Mentions"，该数据将被视为社交噪音自动丢弃。
+内置强大的 `Noise List`。如果标题包含 "Tweet" 或 "Mentions"，该数据将被视为社交噪音自动丢弃。
 4. **一号机黑名单**:
-雷达在扫描时会自动读取 Issues 列表。如果某个标的（如 Bitcoin）已经在一号机的“狙击范围”内，二号机会自动跳过，避免数据冗余。
+雷达在扫描时会自动读取 Issues 列表。如果某个标的已经在一号机的“狙击范围”内，二号机会自动跳过，避免数据冗余。
 
 ---
 
@@ -110,7 +104,7 @@ graph TD
 
 ### 1. 配置监控目标 (Sniper)
 
-在 [Issues 页面](https://github.com/wenfp108/poly-data/issues) 新建 Issue，标题使用动态占位符：
+在 [Issues 页面](https://github.com/wenfp108/poly-data/issues) 新建 Issue：
 
 * `What will Gold (GC) settle at in {month}?`
 * `Fed decision in {month}?`
@@ -119,7 +113,7 @@ graph TD
 
 系统已配置双任务错峰运行：
 
-* **xx:00**: 触发 Sniper (一号机)，专注核心策略。
+* **xx:00 / xx:15**: 触发 Sniper (一号机)，专注核心策略。
 * **xx:20**: 触发 Radar (二号机)，扫描全球热点。
 
 ### 3. 数据路径
@@ -134,10 +128,9 @@ graph TD
 | 环境变量 | 说明 |
 | --- | --- |
 | `GITHUB_TOKEN` | 必须具备 `repo` 权限以读写 Issue 和 Data |
-| `REPO_OWNER` | 你的 GitHub 用户名 (e.g., *wenfp108*) |
-| `REPO_NAME` | 你的数据仓库名 (e.g., *poly-data*) |
+| `REPO_OWNER` | GitHub 用户名 (e.g., *wenfp108*) |
+| `REPO_NAME` | 数据仓库名 (e.g., *poly-data*) |
 
 ---
 
 *Built with ❤️ by **Woon**. Powered by AI-driven Macro Scouter Engine.*
-
