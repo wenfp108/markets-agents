@@ -1,146 +1,91 @@
 # 🌍 Macro Scouter (宏观信号监测哨兵)
 
 > **"Data is the new oil, but signal is the new gold."**
-> 一个基于 Polymarket 预测市场的自动化宏观经济监测系统。零代码配置，高信噪比，GitHub 原生体验。
+> 一个基于 Polymarket 预测市场的自动化宏观经济监测系统。**双引擎驱动，七维度过滤，高信噪比。**
 
-## 🚀 项目简介
+## 🚀 核心架构：双引擎系统
 
-**Macro Scouter** 是一个去中心化的宏观数据抓取与分析 Agent。它利用 Puppeteer 模拟真人行为，从全球最大的预测市场 Polymarket 抓取最真实的真金白银交易数据（非单纯的民意调查），并清洗出高价值的宏观信号。
+本系统采用“狙击+雷达”双机协同模式，确保既不漏掉核心目标，也能捕捉意外的黑天鹅。
 
-### ✨ 核心特性
-
-* **无代码控制台 (IssueOps)**: 不需要修改一行代码，直接通过 **GitHub Issues** 进行管理。
-    * 新增监控 👉 发个 Issue
-    * 修改关键词 👉 改 Issue 标题
-    * 停止监控 👉 关闭 Issue
-* **高信噪比 (Signal-Only)**: 内置智能过滤器。
-    * 自动剔除 `Volume < 100` 的死盘。
-    * 自动剔除 `Spread > 5%` 的无效博弈。
-    * 自动识别并修正 `live/news` 等无效链接。
-* **永久免费架构**: 
-    * **大脑**: GitHub Issues (配置)
-    * **手脚**: Hugging Face Docker (执行，16GB RAM)
-    * **仓库**: GitHub Repo (存储 JSON 数据)
-    * **扳机**: GitHub Actions (定时触发)
-
----
-
-## 🛠️ 架构图
-
-```mermaid
-graph LR
-    A[GitHub Issues] -- 1. 读取指令 --> B(Hugging Face Space)
-    D[GitHub Actions] -- 2. 定时唤醒 --> B
-    B -- 3. 模拟搜索 & 抓取 --> E[Polymarket]
-    B -- 4. 清洗 & 存入 --> C[GitHub Data Folder]
-
-```
-
----
-
-## 🕹️ 如何使用
-
-### 1. 启动/增加监控
-
-在仓库的 [Issues 页面](https://www.google.com/search?q=../../issues) 点击 **New Issue**。
-
-* **标题**: 输入你想监控的问题（支持动态占位符）。
-* **内容**: 留空即可。
-
-#### 💡 支持的动态占位符：
-
-代码会自动将这些标签替换为实时日期，实现自动化轮动监测。
-
-* `{month}`: 自动替换为当前月份 (e.g., *January*)
-* `{next_month}`: 自动替换为下个月 (e.g., *February*)
-* `{year}`: 当前年份 (e.g., *2026*)
-* `{date}`: 当前日期 (e.g., *January 28*)
-
-#### 📝 示例标题：
-
-* `Fed decision in {month}?` (自动搜: *Fed decision in January?*)
-* `Will S&P 500 hit 6000 in {year}?`
-* `Bitcoin price on {date}?`
-
-### 2. 停止监控
-
-直接在 Issues 列表里找到对应的问题，点击 **Close Issue**。系统下次运行时会自动忽略它，不再浪费资源。
-
-### 3. 查看数据
-
-所有抓取到的数据会自动按日期归档在 `data/strategy/YYYY-MM-DD/` 目录下。
-
----
-
-## 🧠 推荐策略 (宏观 8 问)
-
-你可以直接复制以下标题到 Issues 中，作为初始监控列表：
-
-1. **黄金月度交割价 (避险核心)**
-> `What will Gold (GC) settle at in {month}?`
+* **🎯 一号机 (Sniper - 守正)**:
+* **职责**：精准跟踪。根据你在 **GitHub Issues** 中定义的“宏观 8 问”进行深度爬取。
+* **特性**：支持动态占位符（如 `{month}`），确保黄金、美联储等核心标的永不掉线。
 
 
-2. **黄金月度高点**
-> `What will Gold (GC) hit__ by end of {month}?`
-
-
-3. **美联储决议 (宏观核心)**
-> `Fed decision in {month}?`
-
-
-4. **比特币月度目标价**
-> `What price will Bitcoin hit in {month}?`
-
-
-5. **年度降息预期**
-> `How many Fed rate cuts in {year}?`
-
-
-6. **BTC 历史新高预测**
-> `Bitcoin all time high by ___?`
-
-
-7. **BTC 单日价格 (短线)**
-> `Bitcoin price on {date}?`
-
-
-8. **BTC 关键点位 (强弱)**
-> `Bitcoin above ___ on {date}?`
+* **📡 二号机 (Radar - 出奇)**:
+* **职责**：全网扫描。每小时扫描 Polymarket 全站成交额 Top 100 的市场。
+* **特性**：内置 **7 大核心板块过滤算法**，自动清洗掉体育、娱乐等无效博弈，仅保留具备宏观穿透力的信号。
 
 
 
 ---
 
-## ⚙️ 部署参数
+## 🛡️ 七大核心监控板块与筛选准则
+
+为了确保数据纯净，二号机内置了严格的“信号 vs 噪音”识别逻辑：
+
+| 板块 (Category) | 监控核心 (Signals) | 剔除噪音 (Noise) | 宏观价值 |
+| --- | --- | --- | --- |
+| **Politics** | 美国大选、官员任命、政府停摆 | 社交媒体推文、民调、日常着装 | 掌握全球权力核心的动向 |
+| **Economy** | 美联储 (Fed)、通胀 (CPI)、就业数据 | 非核心国家排名、一般性声明 | 预判利率路径与资产定价 |
+| **Finance** | 金/银交割、S&P 500、原油、万亿市值 | 小盘股并购、常规财报、IPO | 监测大宗商品与流动性风向 |
+| **Crypto** | BTC/ETH 趋势、ETF 流入、市值占比 | 山寨币/土狗、NFT、空投信息 | 风险资产的情绪温度计 |
+| **Tech** | AI 模型基准 (Gemini/GPT)、半导体 | App 下载排名、网红周边、游戏 | 捕捉第四次工业革命的奇点 |
+| **Geopolitics** | 军事冲突、停火协议、政权更迭 | 边缘小国选举、常规外交访问 | 锁定黑天鹅，预警供应链中断 |
+| **Science** | 极端天灾、全球疫情、SpaceX 进展 | 局部城市天气 (降雪/降雨) | 捕捉长尾风险与商业航天估值 |
+
+---
+
+## 🧠 智能筛选逻辑 (Filtering Logic)
+
+系统不仅仅是抓取，更是在“思考”数据的价值：
+
+1. **优先级去重 (Priority Sorting)**:
+如果一个事件同时拥有多个标签（如“地缘”和“政治”），系统会根据 `Politics > Economy > ... > World` 的优先级自动归类，确保 JSON 数据不重复，分类精准。
+2. **资金门槛 (Volume Gate)**:
+* **24h 成交额 > $10,000**: 只有产生真实博弈的市场才会被雷达捕获。
+* **自动剔除死盘**: 排除无成交量、点差 (Spread) 过大的无效盘口。
+
+
+3. **关键词清洗 (Keyword Cleaning)**:
+内置强大的 `Noise List`。例如，在政治板块，如果标题包含 "Tweet" 或 "Mentions"，该数据将被视为社交噪音自动丢弃。
+4. **一号机黑名单**:
+雷达在扫描时会自动读取 Issues 列表。如果某个标的（如 Bitcoin）已经在一号机的“狙击范围”内，二号机会自动跳过，避免数据冗余。
+
+---
+
+## 🕹️ 如何配置与查看
+
+### 1. 配置监控目标 (Sniper)
+
+在 [Issues 页面](https://www.google.com/search?q=https://github.com/wenfp108/poly-data/issues) 新建 Issue，标题使用动态占位符：
+
+* `What will Gold (GC) settle at in {month}?`
+* `Fed decision in {month}?`
+
+### 2. 自动化调度 (Action)
+
+系统已配置双任务错峰运行：
+
+* **xx:00**: 触发 Sniper (一号机)，专注核心策略。
+* **xx:20**: 触发 Radar (二号机)，扫描全球热点。
+
+### 3. 数据路径
+
+* **策略数据**: `data/strategy/YYYY-MM-DD/sniper-YYYY-M-D-HH_mm.json`
+* **趋势数据**: `data/trends/YYYY-MM-DD/radar-YYYY-M-D-HH_mm.json`
+
+---
+
+## ⚙️ 部署参数 (Secrets)
 
 | 环境变量 | 说明 |
 | --- | --- |
-| `GITHUB_TOKEN` | 必须具备 `repo` 权限以读取 Issue 和写入数据 |
-| `REPO_OWNER` | GitHub 用户名 (e.g., *wenfp108*) |
-| `REPO_NAME` | 仓库名称 (e.g., *poly-data*) |
+| `GITHUB_TOKEN` | 必须具备 `repo` 权限以读写 Issue 和 Data |
+| `REPO_OWNER` | 你的 GitHub 用户名 (e.g., *wenfp108*) |
+| `REPO_NAME` | 你的数据仓库名 (e.g., *poly-data*) |
 
 ---
 
-## 📊 数据样本
+*Built with ❤️ by **Woon**. Powered by AI-driven Macro Scouter Engine.*
 
-数据存储为纯净的 JSON 格式，包含核心博弈数据与黑天鹅预警指标。
-
-```json
-{
-    "slug": "fed-decision-in-january",
-    "question": "No change",
-    "prices": "Yes: 99.6% | No: 0.4%",
-    "volume": 89846871,
-    "dayChange": "0.55%",
-    "updatedAt": "2026-01-28T05:43:22Z"
-}
-
-```
-
----
-
-*Built with ❤️ by **Woon***
-
-```
-
-```
