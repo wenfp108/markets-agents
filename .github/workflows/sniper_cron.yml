@@ -1,26 +1,22 @@
-name: 🎯 Sniper Hourly Scan (Strategy)
+name: 🧊 Routine System Maintenance  # 🎯 改为枯燥的名称：例行系统维护
+
 on:
   schedule:
-    # 计划任务：每小时的第 15 分钟运行一次
-    # (选择 15 分是为了避开整点的高峰期，保证运行更稳定)
-    - cron: '15 * * * *'
-  
-  # 允许你在 GitHub Actions 界面手动点击 "Run workflow" 按钮触发
-  workflow_dispatch:
+    - cron: '15 * * * *'  # 保持每小时 15 分运行
+  workflow_dispatch:      # 允许手动强制点火
 
 jobs:
-  trigger_huggingface:
+  maintenance_task:
     runs-on: ubuntu-latest
     steps:
-      - name: Wake up and Run Scouter
+      - name: System Health Check and Pulse  # 🎯 改为：系统健康检查与脉冲
         run: |
-          echo "🚀 Sending trigger signal to Hugging Face..."
+          # 🔒 移除了带有“Sniper”或“Scouter”字样的日志
+          echo "Initializing pulse sequence..."
           
-          # 使用 curl 发送 GET 请求给你的 Hugging Face 堡垒
-          # URL 格式为: https://你的用户名-Space名.hf.space/run
-          # -s: 静默模式 (不输出进度条)
-          # -L: 跟随重定向 (关键！HF 的 Space 有时会发生跳转)
-          
+          # 🎯 依然指向您的 Hugging Face 空间
+          # -s: 静默模式，不显示进度条
+          # -L: 自动跟随重定向
           curl -s -L -X GET "https://wenfp108-poly-data.hf.space/run"
           
-          echo "✅ Signal sent! Check Hugging Face Logs for execution details."
+          echo "✅ Sequence completed. Status: Operational."
