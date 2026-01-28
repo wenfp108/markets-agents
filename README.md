@@ -29,16 +29,44 @@
 
 ```mermaid
 
-graph LR
+graph TD
+    subgraph GitHub_Control [GitHub 指挥部]
+        A1[GitHub Issues<br/>定向狙击指令]
+        A2[GitHub Actions<br/>错峰调度扳机]
+    end
 
-    A[GitHub Issues] -- 1. 读取指令 --> B(Hugging Face Space)
+    subgraph Execution_Layer [Hugging Face 执行层]
+        B1(🎯 Sniper Engine<br/>定向抓取 :00/:15)
+        B2(📡 Radar Engine<br/>全网扫描 :20)
+    end
 
-    D[GitHub Actions] -- 2. 定时唤醒 --> B
+    subgraph External [数据源]
+        E[Polymarket API/Web]
+    end
 
-    B -- 3. 模拟搜索 & 抓取 --> E[Polymarket]
+    subgraph Private_Vault [私有数据金矿]
+        C1[(data/strategy<br/>精准策略库)]
+        C2[(data/trends<br/>宏观趋势库)]
+        C3[(src/<br/>源码备份归档)]
+    end
 
-    B -- 4. 清洗 & 存入 --> C[GitHub Data Folder]
+    %% 调度逻辑
+    A2 -- "唤醒" --> B1
+    A2 -- "唤醒" --> B2
+    
+    %% Sniper 流程
+    B1 -- "1. 读取指令" --> A1
+    B1 -- "2. 模拟抓取" --> E
+    B1 -- "3. 存入" --> C1
 
+    %% Radar 流程
+    B2 -- "1. 扫描全网" --> E
+    B2 -- "2. 7大板块清洗" --> B2
+    B2 -- "3. 对齐去重" --> A1
+    B2 -- "4. 存入" --> C2
+
+    %% 源码管理
+    B1 & B2 -. "定期备份" .-> C3
 
 
 
