@@ -3,7 +3,37 @@ const axios = require('axios');
 const http = require('http');
 
 // ==========================================
-// ✨ [新增] 1. 智能目录分类器 (对齐二号机逻辑)
+// ✨ [新增] 0. 大师思维模型库 (Strategy Engine)
+// ==========================================
+const MASTERS = {
+    // [塔勒布] 尾部风险: 赔率极低(<5%)或极高(>95%)，但流动性充足(>5000)，博弈黑天鹅
+    TALEB: (m, prices) => {
+        // 检查是否有极端赔率
+        const isTail = prices.some(p => Number(p) < 0.05 || Number(p) > 0.95);
+        // 流动性必须足够，否则无法成交
+        return (isTail && Number(m.liquidity) > 5000) ? 'TAIL_RISK' : null;
+    },
+    // [索罗斯] 反身性: 24小时成交量巨大(>10000)且价格剧烈波动(>5%)，暗示趋势形成
+    SOROS: (m) => {
+        const change = Math.abs(Number(m.oneDayPriceChange || 0));
+        const vol24 = Number(m.volume24hr || 0);
+        return (vol24 > 10000 && change > 0.05) ? 'REFLEXIVITY_TREND' : null;
+    },
+    // [芒格] 确定性: 极度收敛的市场，价差极小(<1%)，成交量巨大(>50000)，代表共识已定
+    MUNGER: (m) => {
+        const spread = Number(m.spread || 1);
+        const vol = Number(m.volume || 0);
+        return (vol > 50000 && spread < 0.01) ? 'HIGH_CERTAINTY' : null;
+    },
+    // [纳瓦尔] 杠杆效应: 科技类话题且资金关注度高(>20000)
+    NAVAL: (m, category) => {
+        const vol = Number(m.volume || 0);
+        return (category === 'TECH' && vol > 20000) ? 'TECH_LEVERAGE' : null;
+    }
+};
+
+// ==========================================
+// 1. 智能目录分类器 (保持不变)
 // ==========================================
 function getCategory(title) {
     const t = title.toLowerCase();
@@ -18,18 +48,17 @@ function getCategory(title) {
 }
 
 // ==========================================
-// 2. 从 GitHub Issues 获取配置
+// 2. 从 GitHub Issues 获取配置 (保持不变)
 // ==========================================
 async function fetchQuestionsFromIssues() {
     const { GITHUB_TOKEN, REPO_OWNER, REPO_NAME } = process.env;
     const issuesUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?state=open&per_page=100`;
-
     try {
         console.log("📥 Reading questions from GitHub Issues...");
         const resp = await axios.get(issuesUrl, {
-            headers: { 
-                Authorization: `Bearer ${GITHUB_TOKEN}`, 
-                Accept: 'application/vnd.github.v3+json' 
+            headers: {
+                Authorization: `Bearer ${GITHUB_TOKEN}`,
+                Accept: 'application/vnd.github.v3+json'
             }
         });
         const questions = resp.data.map(issue => issue.title);
@@ -42,7 +71,7 @@ async function fetchQuestionsFromIssues() {
 }
 
 // ==========================================
-// 3. 智能问题生成器 (支持 {month} 占位符)
+// 3. 智能问题生成器 (保持不变)
 // ==========================================
 async function generateQueries() {
     const rawTemplates = await fetchQuestionsFromIssues();
@@ -50,7 +79,7 @@ async function generateQueries() {
     // 如果没有 Issue，使用保底默认值
     if (rawTemplates.length === 0) {
         console.log("⚠️ No active Issues found. Using default fallback.");
-        return [{ query: `What will Gold (GC) settle at in {month}?`, originalTitle: `What will Gold (GC) settle at in {month}?` }]; 
+        return [{ query: `What will Gold (GC) settle at in {month}?`, originalTitle: `What will Gold (GC) settle at in {month}?` }];
     }
 
     const now = new Date();
@@ -58,21 +87,17 @@ async function generateQueries() {
     const currMonth = months[now.getMonth()];
     const nextMonth = months[(now.getMonth() + 1) % 12];
     const currYear = String(now.getFullYear());
-    const currDateStr = `${currMonth} ${now.getDate()}`; 
-
-    // ✨ [修改] 改为存储对象 { query, originalTitle }
+    const currDateStr = `${currMonth} ${now.getDate()}`;
+    
     let finalQueries = [];
-
     rawTemplates.forEach(template => {
         let queriesToAdd = [];
-        
         if (template.includes("{month}") || template.includes("{year}") || template.includes("{date}")) {
             let q1 = template.replace(/{month}/g, currMonth)
                              .replace(/{next_month}/g, nextMonth)
                              .replace(/{year}/g, currYear)
                              .replace(/{date}/g, currDateStr);
             queriesToAdd.push(q1);
-
             if (template.includes("{month}")) {
                 let q2 = template.replace(/{month}/g, nextMonth)
                                  .replace(/{next_month}/g, months[(now.getMonth() + 2) % 12])
@@ -83,25 +108,23 @@ async function generateQueries() {
         } else {
             queriesToAdd.push(template);
         }
-
-        // 将生成的查询词与原始 Issue 标题绑定
+        
         queriesToAdd.forEach(q => {
             finalQueries.push({
                 query: q,
-                originalTitle: template // 保留“核心话题”，用于后续 AI 关联
+                originalTitle: template 
             });
         });
     });
-
     return finalQueries;
 }
 
 // ==========================================
-// 4. 模拟搜索 (Puppeteer)
+// 4. 模拟搜索 (保持不变)
 // ==========================================
 async function getSlugs() {
     const queryObjects = await generateQueries();
-    const results = []; // ✨ [修改] 存储结构化结果 { slug, originalTitle }
+    const results = []; 
     
     const browser = await puppeteer.launch({
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
@@ -110,7 +133,7 @@ async function getSlugs() {
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
+    
     for (const obj of queryObjects) {
         try {
             console.log(`[SCOUTING] ${obj.query}`);
@@ -122,16 +145,14 @@ async function getSlugs() {
                     const href = link.getAttribute('href');
                     const parts = href.split('/');
                     const potentialSlug = parts.pop() || parts.pop();
-                    // 黑名单过滤
                     if (potentialSlug !== 'live' && potentialSlug !== 'news' && potentialSlug !== 'activity') {
                         return potentialSlug;
                     }
                 }
                 return null;
             });
-
+            
             if (slug) {
-                // ✨ [关键] 只要找到 slug，就把原始话题带上
                 results.push({ slug: slug, originalTitle: obj.originalTitle });
                 console.log(`[MATCH] ✅ Found: ${slug}`);
             } else {
@@ -141,7 +162,6 @@ async function getSlugs() {
     }
     await browser.close();
     
-    // 简单去重 (以 slug 为准)
     const uniqueResults = [];
     const seenSlugs = new Set();
     for (const r of results) {
@@ -154,87 +174,88 @@ async function getSlugs() {
 }
 
 // ==========================================
-// 5. 数据同步 (🔥核心修改区域🔥)
+// 5. 数据同步 (🔥 修改处: 植入大师打标)
 // ==========================================
 async function syncData() {
     const { GITHUB_TOKEN, REPO_OWNER, REPO_NAME } = process.env;
     if (!GITHUB_TOKEN) return console.log("❌ Missing Secrets!");
-
+    
     const taskResults = await getSlugs();
     let processedData = [];
-
+    
     for (const task of taskResults) {
         try {
             const resp = await axios.get(`https://gamma-api.polymarket.com/events?slug=${task.slug}`);
             const event = resp.data[0];
             if (!event || !event.markets) continue;
-
+            
             event.markets.forEach(m => {
                 if (!m.active || m.closed || m.archived) return;
                 
                 const totalVol = Number(m.volume || 0);
                 const liq = Number(m.liquidity || 0);
-                // 门槛保持: Volume < 10 或 Liquidity < 10 则忽略
                 if (totalVol < 10 && liq < 10) return; 
-
+                
                 let prices = [], outcomes = [];
                 try {
                     prices = JSON.parse(m.outcomePrices);
                     outcomes = JSON.parse(m.outcomes);
                 } catch (e) { return; }
-
+                
                 let priceStr = outcomes.map((o, i) => `${o}: ${(Number(prices[i]) * 100).toFixed(1)}%`).join(" | ");
+                
+                // --- ✨ 大师策略打标开始 ---
+                const category = getCategory(task.originalTitle);
+                const masterTags = [];
+                
+                // 运行 4 位大师的逻辑
+                for (const [name, logic] of Object.entries(MASTERS)) {
+                    // 传入市场数据m、价格数组prices、分类category
+                    const tag = logic(m, prices, category);
+                    if (tag) masterTags.push(tag);
+                }
+                // 默认标签
+                if (masterTags.length === 0) masterTags.push("RAW_MARKET");
+                // --- ✨ 大师策略打标结束 ---
 
-                // ✨ [重点] 这里完全复制了二号机的结构，并补全了 Category
                 processedData.push({
-                    // 1. 基础 ID
-                    slug: task.slug,                // 对应一号机抓取的 slug
-                    ticker: m.slug,                 // 对应 m.slug
-                    
-                    // 2. 标题
+                    slug: task.slug,
+                    ticker: m.slug,
                     question: m.groupItemTitle || m.question,
                     eventTitle: event.title,
-                    
-                    // 3. 价格与量
                     prices: priceStr,
                     volume: Math.round(totalVol),
                     liquidity: Math.round(liq),
-                    
-                    // 4. 时间与变动 (🔥 严格对齐二号机修正逻辑)
                     endDate: m.endDate ? m.endDate.split("T")[0] : "N/A",
                     dayChange: m.oneDayPriceChange ? (Number(m.oneDayPriceChange) * 100).toFixed(2) + "%" : "0.00%",
                     vol24h: Math.round(Number(m.volume24hr || 0)),
                     spread: m.spread ? (Number(m.spread) * 100).toFixed(2) + "%" : "N/A",
-                    
-                    // 5. 排序与更新
                     sortOrder: Number(m.groupItemThreshold || 0),
                     updatedAt: m.updatedAt,
-
-                    // 6. 汇总看板关键字段 (一号机专属身份卡)
-                    engine: "sniper",                          // 标记来源
-                    core_topic: task.originalTitle,           // 关联 Issue 标题
-                    category: getCategory(task.originalTitle), // 自动生成的目录
-                    url: `https://polymarket.com/event/${task.slug}` // 方便点击
+                    engine: "sniper",
+                    core_topic: task.originalTitle,
+                    category: category, 
+                    url: `https://polymarket.com/event/${task.slug}`,
+                    // ✨ 新增字段: 策略标签
+                    strategy_tags: masterTags 
                 });
             });
         } catch (e) { console.error(`Fetch Err: ${task.slug}`); }
     }
-
+    
     if (processedData.length === 0) return console.log("No valid data found.");
-
-    // 按成交量排序
+    
     processedData.sort((a, b) => b.volume - a.volume);
-
+    
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const day = now.getDate();
     const timePart = `${now.getHours().toString().padStart(2, '0')}_${now.getMinutes().toString().padStart(2, '0')}`;
-
     const fileName = `sniper-${year}-${month}-${day}-${timePart}.json`;
     const datePart = now.toISOString().split('T')[0];
     const path = `data/strategy/${datePart}/${fileName}`;
-
+    
     await axios.put(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`, {
         message: `Structured Sync: ${fileName}`,
         content: Buffer.from(JSON.stringify(processedData, null, 2)).toString('base64')
