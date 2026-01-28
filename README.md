@@ -58,7 +58,7 @@
 
 ### 1. 配置监控目标 (Sniper)
 
-在 [Issues 页面](https://www.google.com/search?q=https://github.com/wenfp108/poly-data/issues) 新建 Issue，标题使用动态占位符：
+在 [Issues 页面](https://github.com/wenfp108/poly-data/issues) 新建 Issue，标题使用动态占位符：
 
 * `What will Gold (GC) settle at in {month}?`
 * `Fed decision in {month}?`
