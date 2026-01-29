@@ -23,26 +23,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # cache: 'npm'  <-- ❌ 删除这行，因为没有 lock 文件无法缓存
+          # cache: 'npm'  <-- 保持注释状态
 
-      # 安装 Chrome 依赖 (保持不变)
+      # 🔥【修复版】适配 Ubuntu 24.04 依赖列表
       - name: Install System Dependencies for Chrome
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             ca-certificates \
             fonts-liberation \
-            libasound2 \
+            libasound2t64 \
             libatk-bridge2.0-0 \
             libatk1.0-0 \
             libc6 \
-            libccairo2 \
+            libcairo2 \
             libcups2 \
             libdbus-1-3 \
             libexpat1 \
             libfontconfig1 \
             libgbm1 \
-            libgcc1 \
+            libgcc-s1 \
             libglib2.0-0 \
             libgtk-3-0 \
             libnspr4 \
@@ -68,7 +68,7 @@ jobs:
             xdg-utils
 
       - name: Install Project Dependencies
-        run: npm install  # ✅ 修改处：从 npm ci 改为 npm install (自动生成 lock 文件)
+        run: npm install
 
       # 🎯 Phase 1: Sniper
       - name: 🎯 Run Sniper Engine
