@@ -1,8 +1,10 @@
 const puppeteer = require('puppeteer');
 const axios = require('axios');
+const fs = require('fs');
+const pathLocal = require('path'); // 重命名避免冲突
 
 // ==========================================
-// 0. 策略引擎
+// 0. 策略引擎 (保持原样)
 // ==========================================
 const MASTERS = {
     TALEB: (m, prices) => {
@@ -77,7 +79,6 @@ async function generateQueries() {
     const now = new Date();
     const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     
-    // 生成未来3天日期
     const targetDates = [];
     for (let i = 0; i < 3; i++) {
         const d = new Date(now);
@@ -88,7 +89,6 @@ async function generateQueries() {
         });
     }
 
-    // 生成月份索引
     const currMonthIndex = now.getMonth();
     const nextMonthIndex = (currMonthIndex + 1) % 12;
     const nextNextMonthIndex = (currMonthIndex + 2) % 12;
@@ -100,14 +100,12 @@ async function generateQueries() {
     const currentYearVal = now.getFullYear();
     const nextYearVal = currentYearVal + 1;
 
-    // 跨年判断
     const nextMonthYear = nextMonthIndex < currMonthIndex ? currentYearVal + 1 : currentYearVal;
     const nextNextMonthYear = nextNextMonthIndex < currMonthIndex ? currentYearVal + 1 : currentYearVal;
 
     let finalQueries = [];
     
     rawTemplates.forEach(template => {
-        // 逻辑 A: {date} -> 裂变3天
         if (template.includes("{date}")) {
             targetDates.forEach(dateObj => {
                 let q = template.replace(/{date}/g, dateObj.str)
@@ -117,8 +115,6 @@ async function generateQueries() {
                 finalQueries.push({ query: q, originalTitle: template });
             });
         }
-        
-        // 逻辑 B: {month} -> 裂变2月
         else if (template.includes("{month}") || template.includes("{next_month}")) {
             let q1 = template.replace(/{month}/g, currMonthStr)
                              .replace(/{next_month}/g, nextMonthStr)
@@ -130,8 +126,6 @@ async function generateQueries() {
                              .replace(/{year}/g, String(nextMonthYear));
             finalQueries.push({ query: q2, originalTitle: template });
         } 
-        
-        // 逻辑 C: {year} -> 裂变2年
         else if (template.includes("{year}")) {
             let q1 = template.replace(/{year}/g, String(currentYearVal));
             finalQueries.push({ query: q1, originalTitle: template });
@@ -139,8 +133,6 @@ async function generateQueries() {
             let q2 = template.replace(/{year}/g, String(nextYearVal));
             finalQueries.push({ query: q2, originalTitle: template });
         }
-
-        // 逻辑 D: 静态文本
         else {
             finalQueries.push({ query: template, originalTitle: template });
         }
@@ -285,12 +277,22 @@ async function syncData() {
     const datePart = now.toISOString().split('T')[0];
     const path = `data/strategy/${datePart}/${fileName}`;
     
+    // 1. 上传云端 (供中央银行收割)
     await axios.put(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`, {
         message: `Structured Sync: ${fileName}`,
         content: Buffer.from(JSON.stringify(processedData, null, 2)).toString('base64')
     }, { headers: { Authorization: `Bearer ${TOKEN}` } });
     
     console.log(`✅ Success: Archived ${processedData.length} structured items to ${path}`);
+
+    // 🔥 2.【核心修改】本地硬盘留底 (防收割机制)
+    // 即使云端文件被删，本地这份依然存在，Radar 可以直接读取
+    try {
+        const localDir = pathLocal.join('data', 'strategy', datePart);
+        if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
+        fs.writeFileSync(pathLocal.join(localDir, fileName), JSON.stringify(processedData, null, 2));
+        console.log(`📍 Intelligence locked in Local Bridge (Safe from Bank harvesting).`);
+    } catch (e) { console.error("❌ Local Mirror Failed:", e.message); }
 }
 
 // ==========================================
