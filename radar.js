@@ -1,7 +1,9 @@
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 // ==========================================
-// 0. 策略引擎 (原封不动)
+// 0. 策略引擎
 // ==========================================
 const MASTERS = {
     TALEB: (m, prices) => {
@@ -25,7 +27,7 @@ const MASTERS = {
 };
 
 // ==========================================
-// 1. 板块配置 (保持阶梯门槛)
+// 1. 板块配置
 // ==========================================
 const SECTOR_CONFIG = {
     "POLITICS":        { sort: "vol24h",    minVol: 10000, signals: ["election", "nominate", "strike", "shutdown", "fed", "president", "war"], noise: ["tweet", "poll", "approval"] },
@@ -41,12 +43,27 @@ const SECTOR_CONFIG = {
 const CATEGORY_PRIORITY = Object.keys(SECTOR_CONFIG).map(k => k.toLowerCase());
 
 // ==========================================
-// 2. 物理去重：读取 Sniper 已占领的 Slug
+// 2. 物理去重：硬盘优先 (避开中央银行收割)
 // ==========================================
 async function getSniperActiveSlugs(TOKEN, REPO_OWNER, REPO_NAME) {
-    const now = new Date().toISOString().split('T')[0];
-    const path = `data/strategy/${now}`;
-    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
+    const today = new Date().toISOString().split('T')[0];
+    const localPath = path.join('data', 'strategy', today);
+    
+    // 🔥 第一优先：读取本地虚拟机硬盘刚刚生成的底稿 (不受中央银行收割影响)
+    if (fs.existsSync(localPath)) {
+        const files = fs.readdirSync(localPath).filter(f => f.startsWith('sniper-')).sort();
+        if (files.length > 0) {
+            const latestLocal = path.join(localPath, files.pop());
+            try {
+                const data = JSON.parse(fs.readFileSync(latestLocal, 'utf8'));
+                console.log(`⚡ [Radar] Instant local bridge hit! Subtracting ${data.length} Sniper targets.`);
+                return new Set(data.map(item => item.slug));
+            } catch (e) { console.log("⚠️ Failed to parse local data."); }
+        }
+    }
+
+    // 第二优先：API 查云端 (手动运行 Radar 或本地无底稿时有用)
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data/strategy/${today}`;
     try {
         const resp = await axios.get(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const latestFile = resp.data.filter(f => f.name.startsWith('sniper-')).sort().pop();
@@ -58,9 +75,7 @@ async function getSniperActiveSlugs(TOKEN, REPO_OWNER, REPO_NAME) {
 
 async function generateSniperTargets() {
     const token = process.env.MY_PAT || process.env.GITHUB_TOKEN;
-    const COMMAND_REPO = "wenfp108/Central-Bank";
-    if (!token) return [];
-    const issuesUrl = `https://api.github.com/repos/${COMMAND_REPO}/issues?state=open&per_page=100`;
+    const issuesUrl = `https://api.github.com/repos/wenfp108/Central-Bank/issues?state=open&per_page=100`;
     try {
         const resp = await axios.get(issuesUrl, { headers: { Authorization: `Bearer ${token}` } });
         return resp.data.filter(i => i.title.toLowerCase().includes('[poly]')).map(i => normalizeText(i.title.replace(/\[poly\]/gi, '')));
@@ -76,8 +91,7 @@ async function runRadarTask() {
     const TOKEN = process.env.MY_PAT || process.env.GITHUB_TOKEN;
     const REPO_OWNER = process.env.REPO_OWNER || process.env.GITHUB_REPOSITORY_OWNER;
     let REPO_NAME = process.env.REPO_NAME || (process.env.GITHUB_REPOSITORY ? process.env.GITHUB_REPOSITORY.split('/')[1] : null);
-    
-    // 1. 同步狙击手状态
+
     const sniperSlugs = await getSniperActiveSlugs(TOKEN, REPO_OWNER, REPO_NAME);
     const sniperBlacklist = await generateSniperTargets();
 
@@ -89,10 +103,7 @@ async function runRadarTask() {
         let allCandidates = [];
 
         resp.data.forEach(event => {
-            if (!event.markets) return;
-
-            // 🔥 物理减法：如果狙击手在盯着这个话题，雷达直接整体撤退
-            if (sniperSlugs.has(event.slug)) return;
+            if (!event.markets || sniperSlugs.has(event.slug)) return; // 🔥 物理减法：狙击手占领的话题直接移除
 
             const eventTags = event.tags ? event.tags.map(t => t.slug) : [];
             const matchingCategories = CATEGORY_PRIORITY.filter(cat => eventTags.includes(cat));
@@ -103,7 +114,6 @@ async function runRadarTask() {
             const displayCategory = matchingCategories.map(c => c.toUpperCase()).join(" | ");
             const eventTitleClean = normalizeText(event.title);
             
-            // 黑名单过滤
             if (sniperBlacklist.some(target => eventTitleClean.includes(target) || target.includes(eventTitleClean))) return;
             if (config.noise.some(kw => eventTitleClean.includes(kw))) return;
 
@@ -125,7 +135,7 @@ async function runRadarTask() {
 
                 allCandidates.push({
                     slug: event.slug,
-                    ticker: m.slug, // 这里保留合约唯一标识，支持 Jan 和 Feb 同时存在
+                    ticker: m.slug,
                     question: m.groupItemTitle || m.question,
                     eventTitle: event.title,
                     prices: priceStr,
@@ -141,24 +151,21 @@ async function runRadarTask() {
             });
         });
 
-        // 2. 选出 Top 30 基准（基于 Ticker，允许同事件不同日期共存）
         allCandidates.sort((a, b) => b.vol24h - a.vol24h);
         const finalList = [];
         const seenTickers = new Set();
-
         for (const item of allCandidates) {
             if (finalList.length >= 30) break;
-            finalList.push(item);
-            seenTickers.add(item.ticker);
+            if (!seenTickers.has(item.ticker)) {
+                finalList.push(item);
+                seenTickers.add(item.ticker);
+            }
         }
-
-        // 3. 各板块增补 (Sector Gems)
         Object.keys(SECTOR_CONFIG).forEach(sector => {
             const config = SECTOR_CONFIG[sector];
             let sectorCandidates = allCandidates.filter(i => i.category.includes(sector));
             if (config.sort === "liquidity") sectorCandidates.sort((a, b) => b.liquidity - a.liquidity);
             else sectorCandidates.sort((a, b) => b.vol24h - a.vol24h);
-
             let count = 0;
             for (const item of sectorCandidates) {
                 if (count >= 3) break;
@@ -172,7 +179,6 @@ async function runRadarTask() {
 
         finalList.sort((a, b) => b.vol24h - a.vol24h);
 
-        // 4. 上传
         if (finalList.length > 0) {
             const now = new Date();
             const year = now.getFullYear();
@@ -180,14 +186,12 @@ async function runRadarTask() {
             const day = now.getDate();
             const timePart = `${now.getHours().toString().padStart(2, '0')}_${now.getMinutes().toString().padStart(2, '0')}`;
             const path = `data/trends/${now.toISOString().split('T')[0]}/radar-${year}-${month}-${day}-${timePart}.json`;
-            
             await axios.put(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`, {
-                message: `Radar Update (Full Subtraction Mode)`,
+                message: `Radar Update (Instant Bridge Mode)`,
                 content: Buffer.from(JSON.stringify(finalList, null, 2)).toString('base64')
             }, { headers: { Authorization: `Bearer ${TOKEN}` } });
-            console.log(`✅ Radar Success: Subtracted ${sniperSlugs.size} Sniper topics. Uploaded ${finalList.length} items.`);
+            console.log(`✅ Radar Success: Subtracted ${sniperSlugs.size} items using Local Bridge.`);
         }
-
     } catch (e) { console.error("❌ Radar Error:", e.message); }
 }
 
