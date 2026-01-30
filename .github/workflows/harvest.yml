@@ -15,11 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: ⏳ 2-Minute Buffer
+      - name: ⏳ 5-Second Buffer
         run: |
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "Waiting 2 minutes for settlement..."
-            sleep 120
+            echo "Waiting 5 seconds for settlement..."
+            sleep 5
           else
             echo "Manual trigger, skipping wait."
           fi
