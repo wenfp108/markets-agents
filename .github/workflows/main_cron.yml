@@ -25,6 +25,14 @@ jobs:
           node-version: '20'
           cache: 'npm'  # ✅ 【关键修改1】开启高速缓存
 
+      # 🔥【核心补全】专门缓存 Puppeteer 下载的浏览器二进制文件
+      - name: Cache Puppeteer
+        uses: actions/cache@v4
+        id: puppeteer-cache
+        with:
+          path: ${{ github.workspace }}/.cache/puppeteer
+          key: ${{ runner.os }}-puppeteer-${{ hashFiles('package-lock.json') }}
+
       # 🔥【修复版】适配 Ubuntu 24.04 依赖列表
       - name: Install System Dependencies for Chrome
         run: |
